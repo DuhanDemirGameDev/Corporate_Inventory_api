@@ -14,4 +14,8 @@ public interface EquipmentRepository extends JpaRepository<Equipment, Long> {
 
     // Örneğin; sadece "Boşta (AVAILABLE)" olan ekipmanları getirmesini istiyoruz:
     List<Equipment> findByStatus(String status);
+
+    // 2. Sadece belirli bir personele zimmetli olan cihazları getir.
+    // JPA arka planda JOIN atarak employee_id'ye göre filtreleme yapar.
+    List<Equipment> findByEmployeeId(Long employeeId);
 }

@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -18,7 +19,7 @@ public class EquipmentController {
 
     // SİSTEME YENİ EKİPMAN EKLEME UCU (POST İSTEĞİ)
     @PostMapping
-    public ResponseEntity<EquipmentDto> addEquipment(@RequestBody EquipmentDto equipmentDto) {
+    public ResponseEntity<EquipmentDto> addEquipment(@Valid @RequestBody EquipmentDto equipmentDto) {
         // Dışarıdan (internetten) gelen JSON verisini Service'e yolluyoruz
         EquipmentDto savedEquipment = equipmentService.addEquipment(equipmentDto);
 
@@ -42,5 +43,19 @@ public class EquipmentController {
     public ResponseEntity<EquipmentDto> assignEquipment(@PathVariable Long equipmentId, @PathVariable Long employeeId) {
         EquipmentDto updatedEquipment = equipmentService.assignEquipment(equipmentId, employeeId);
         return new ResponseEntity<>(updatedEquipment, HttpStatus.OK);
+    }
+
+    // Örnek URL: GET http://localhost:8080/api/v1/equipments/status/AVAILABLE
+    @GetMapping("/status/{status}")
+    public ResponseEntity<List<EquipmentDto>> getEquipmentsByStatus(@PathVariable String status) {
+        List<EquipmentDto> equipments = equipmentService.getEquipmentsByStatus(status);
+        return new ResponseEntity<>(equipments, HttpStatus.OK);
+    }
+
+    // Örnek URL: GET http://localhost:8080/api/v1/equipments/employee/1
+    @GetMapping("/employee/{employeeId}")
+    public ResponseEntity<List<EquipmentDto>> getEquipmentsByEmployeeId(@PathVariable Long employeeId) {
+        List<EquipmentDto> equipments = equipmentService.getEquipmentsByEmployeeId(employeeId);
+        return new ResponseEntity<>(equipments, HttpStatus.OK);
     }
 }
