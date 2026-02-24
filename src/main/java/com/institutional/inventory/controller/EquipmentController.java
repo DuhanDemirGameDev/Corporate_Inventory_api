@@ -1,6 +1,7 @@
 package com.institutional.inventory.controller;
 
 import com.institutional.inventory.dto.EquipmentDto;
+import com.institutional.inventory.dto.EquipmentHistoryDto;
 import com.institutional.inventory.service.EquipmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -57,5 +58,13 @@ public class EquipmentController {
     public ResponseEntity<List<EquipmentDto>> getEquipmentsByEmployeeId(@PathVariable Long employeeId) {
         List<EquipmentDto> equipments = equipmentService.getEquipmentsByEmployeeId(employeeId);
         return new ResponseEntity<>(equipments, HttpStatus.OK);
+    }
+
+    // CİHAZ GEÇMİŞİNİ GETİRME UCU (GET İSTEĞİ)
+    // Örnek URL: GET http://localhost:8080/api/v1/equipments/1/history
+    @GetMapping("/{equipmentId}/history")
+    public ResponseEntity<List<EquipmentHistoryDto>> getEquipmentHistory(@PathVariable Long equipmentId) {
+        List<EquipmentHistoryDto> history = equipmentService.getEquipmentHistory(equipmentId);
+        return new ResponseEntity<>(history, HttpStatus.OK);
     }
 }

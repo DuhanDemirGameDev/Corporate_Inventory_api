@@ -1,128 +1,124 @@
 package com.institutional.inventory.service;
 
 import com.institutional.inventory.dto.EquipmentDto;
+import com.institutional.inventory.dto.EquipmentHistoryDto;
 import com.institutional.inventory.entity.Employee;
 import com.institutional.inventory.entity.Equipment;
+import com.institutional.inventory.entity.EquipmentHistory;
 import com.institutional.inventory.exception.ResourceNotFoundException;
 import com.institutional.inventory.repository.EmployeeRepository;
+import com.institutional.inventory.repository.EquipmentHistoryRepository;
 import com.institutional.inventory.repository.EquipmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Service // Spring'e buranın "İş Mantığı Merkezi" olduğunu söyler.
-@RequiredArgsConstructor // (Mülakat Tüyosu) Otomatik Dependency Injection yapar.
+@Service
+@RequiredArgsConstructor
 public class EquipmentService {
 
-    // Service katmanı, veritabanına erişmek için Repository'yi çağırır.
     private final EquipmentRepository equipmentRepository;
-    private final EmployeeRepository employeeRepository; // BUNU EKLEDİK
-    // 1. SİSTEME YENİ BİR EKİPMAN EKLEME METODU
+    private final EmployeeRepository employeeRepository;
+    private final EquipmentHistoryRepository historyRepository; // Bunu unutmamak gerek!
+
+    // 1. CİHAZ EKLEME
     public EquipmentDto addEquipment(EquipmentDto equipmentDto) {
-        // Dışarıdan DTO (Kurye) olarak gelen veriyi, veritabanına yazılacak Entity'ye çeviriyoruz.
         Equipment equipment = new Equipment();
         equipment.setName(equipmentDto.getName());
         equipment.setSerialNumber(equipmentDto.getSerialNumber());
         equipment.setCategory(equipmentDto.getCategory());
-
-        // İş Kuralı: Yeni eklenen bir cihaz her zaman "BOŞTA" yani "AVAILABLE" durumundadır.
         equipment.setStatus("AVAILABLE");
 
-        // Repository'nin save metodu sayesinde veritabanına kaydediyoruz
         Equipment savedEquipment = equipmentRepository.save(equipment);
 
-        // Kaydedilen ve veritabanından otomatik ID alan veriyi tekrar DTO'ya çevirip geri döndürüyoruz
         equipmentDto.setId(savedEquipment.getId());
         equipmentDto.setStatus(savedEquipment.getStatus());
         return equipmentDto;
     }
 
-    // 2. TÜM EKİPMANLARI LİSTELEME METODU
+    // 2. TÜM CİHAZLARI GETİRME
     public List<EquipmentDto> getAllEquipments() {
-        List<Equipment> equipments = equipmentRepository.findAll();
-
-        // Java Stream API kullanarak veritabanından gelen Entity listesini DTO listesine çeviriyoruz
-        return equipments.stream().map(equip -> {
-            EquipmentDto dto = new EquipmentDto();
-            dto.setId(equip.getId());
-            dto.setName(equip.getName());
-            dto.setSerialNumber(equip.getSerialNumber());
-            dto.setCategory(equip.getCategory());
-            dto.setStatus(equip.getStatus());
-            return dto;
-        }).collect(Collectors.toList());
+        return equipmentRepository.findAll().stream().map(this::mapToDto).collect(Collectors.toList());
     }
 
-    // ZİMMETLEME (ASSIGN) İŞLEMİ
+    // 3. ZİMMETLEME (KARA KUTU KAYDI EKLENDİ)
     public EquipmentDto assignEquipment(Long equipmentId, Long employeeId) {
-
-        // 1. Ekipmanı bul, yoksa BİZİM YAZDIĞIMIZ HATAYI fırlat
         Equipment equipment = equipmentRepository.findById(equipmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Belirtilen ID ile cihaz bulunamadı: " + equipmentId));
 
-        // 2. Personeli bul, yoksa BİZİM YAZDIĞIMIZ HATAYI fırlat
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Belirtilen ID ile personel bulunamadı: " + employeeId));
-        // 3. İŞ KURALI (Business Logic): Cihaz boşta mı?
-        if (!equipment.getStatus().equals("AVAILABLE")) {
+
+        if (!"AVAILABLE".equals(equipment.getStatus())) {
             throw new RuntimeException("Bu cihaz şu an boşta değil! Durumu: " + equipment.getStatus());
         }
 
-        // 4. Zimmetleme işlemini yap
+        // Zimmetle
         equipment.setEmployee(employee);
-        equipment.setStatus("ASSIGNED"); // Cihaz artık birinde, durumunu güncelle
-
-        // 5. Veritabanına kaydet
+        equipment.setStatus("ASSIGNED");
         Equipment savedEquipment = equipmentRepository.save(equipment);
 
-        // 6. Sonucu DTO'ya çevir ve döndür
-        EquipmentDto dto = new EquipmentDto();
-        dto.setId(savedEquipment.getId());
-        dto.setName(savedEquipment.getName());
-        dto.setSerialNumber(savedEquipment.getSerialNumber());
-        dto.setCategory(savedEquipment.getCategory());
-        dto.setStatus(savedEquipment.getStatus());
-        dto.setEmployeeId(savedEquipment.getEmployee().getId()); // Kime verildiğini DTO'ya ekle
+        // --- TARİHÇE KAYDI (AUDIT) ---
+        EquipmentHistory history = new EquipmentHistory();
+        history.setEquipment(savedEquipment);
+        history.setEmployee(employee);
+        history.setAction("ASSIGNED");
+        history.setActionDate(LocalDateTime.now());
+        history.setRemarks("Cihaz personele zimmetlendi.");
+        historyRepository.save(history);
+        // -----------------------------
 
-        return dto;
+        return mapToDto(savedEquipment);
     }
 
-    // BELİRLİ DURUMDAKİ CİHAZLARI GETİR (Örn: Sadece AVAILABLE olanlar)
-    public List<EquipmentDto> getEquipmentsByStatus(String status) {
-        // Yeni yazdığımız Repository metodunu çağırıyoruz
-        List<Equipment> equipments = equipmentRepository.findByStatus(status);
+    // 4. GEÇMİŞİ GETİR (DÜZELTİLDİ: ARTIK CİHAZ YOKSA HATA VERİYOR!)
+    public List<EquipmentHistoryDto> getEquipmentHistory(Long equipmentId) {
+        // Önce cihaz var mı diye kontrol et! Yoksa hata fırlat.
+        if (!equipmentRepository.existsById(equipmentId)) {
+            throw new ResourceNotFoundException("Geçmişi sorgulanan cihaz bulunamadı: " + equipmentId);
+        }
 
-        // Gelen Entity listesini DTO listesine çevirip döndürüyoruz
-        return equipments.stream().map(equip -> {
-            EquipmentDto dto = new EquipmentDto();
-            dto.setId(equip.getId());
-            dto.setName(equip.getName());
-            dto.setSerialNumber(equip.getSerialNumber());
-            dto.setCategory(equip.getCategory());
-            dto.setStatus(equip.getStatus());
-            if (equip.getEmployee() != null) {
-                dto.setEmployeeId(equip.getEmployee().getId());
+        List<EquipmentHistory> historyList = historyRepository.findByEquipmentIdOrderByActionDateDesc(equipmentId);
+
+        return historyList.stream().map(hist -> {
+            EquipmentHistoryDto dto = new EquipmentHistoryDto();
+            dto.setId(hist.getId());
+            dto.setEquipmentId(hist.getEquipment().getId());
+            dto.setAction(hist.getAction());
+            dto.setActionDate(hist.getActionDate());
+            dto.setRemarks(hist.getRemarks());
+
+            if (hist.getEmployee() != null) {
+                dto.setEmployeeId(hist.getEmployee().getId());
+                dto.setEmployeeName(hist.getEmployee().getFirstName() + " " + hist.getEmployee().getLastName());
             }
             return dto;
         }).collect(Collectors.toList());
     }
 
-    // BELİRLİ BİR PERSONELİN ÜZERİNDEKİ CİHAZLARI GETİR
-    public List<EquipmentDto> getEquipmentsByEmployeeId(Long employeeId) {
-        // Yeni yazdığımız Repository metodunu çağırıyoruz
-        List<Equipment> equipments = equipmentRepository.findByEmployeeId(employeeId);
+    // YARDIMCI METOD (Kod tekrarını önlemek için)
+    private EquipmentDto mapToDto(Equipment equipment) {
+        EquipmentDto dto = new EquipmentDto();
+        dto.setId(equipment.getId());
+        dto.setName(equipment.getName());
+        dto.setSerialNumber(equipment.getSerialNumber());
+        dto.setCategory(equipment.getCategory());
+        dto.setStatus(equipment.getStatus());
+        if (equipment.getEmployee() != null) {
+            dto.setEmployeeId(equipment.getEmployee().getId());
+        }
+        return dto;
+    }
 
-        return equipments.stream().map(equip -> {
-            EquipmentDto dto = new EquipmentDto();
-            dto.setId(equip.getId());
-            dto.setName(equip.getName());
-            dto.setSerialNumber(equip.getSerialNumber());
-            dto.setCategory(equip.getCategory());
-            dto.setStatus(equip.getStatus());
-            dto.setEmployeeId(equip.getEmployee().getId());
-            return dto;
-        }).collect(Collectors.toList());
+    // Custom Queries (Daha önce eklediğimiz filtreleme metodları)
+    public List<EquipmentDto> getEquipmentsByStatus(String status) {
+        return equipmentRepository.findByStatus(status).stream().map(this::mapToDto).collect(Collectors.toList());
+    }
+
+    public List<EquipmentDto> getEquipmentsByEmployeeId(Long employeeId) {
+        return equipmentRepository.findByEmployeeId(employeeId).stream().map(this::mapToDto).collect(Collectors.toList());
     }
 }
