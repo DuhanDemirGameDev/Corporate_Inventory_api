@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine  # En hafif ve stabil PostgreSQL sürümü
+    container_name: inventory-db # Konteynerin adı
+    restart: always
+    environment:
+      - POSTGRES_USER=admin     # Veritabanı kullanıcı adı
+      - POSTGRES_PASSWORD=sifre123 # Veritabanı şifresi
+      - POSTGRES_DB=inventory_db   # Oluşacak veritabanı adı
+    ports:
+      - "5432:5432" # Bilgisayarımızın 5432 portunu Docker'ın 5432 portuna bağla
+    volumes:
+      - db-data:/var/lib/postgresql/data # Veriler silinmesin diye yedeği buraya al
+
+volumes:
+  db-data: # Kalıcı veri deposu tanımı
